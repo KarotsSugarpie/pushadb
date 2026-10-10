@@ -401,7 +401,8 @@ internal sealed class MainForm : Form
             if (!IsDisposed)
             {
                 Append("Surveillance terminée. Utilise Exporter journal pour sauvegarder les résultats.");
-                if (monitorButton != null && !monitorButton.IsDisposed)\n                    BeginInvoke(new Action(() => { if (!monitorButton.IsDisposed) monitorButton.Text = "Surveiller IPTV"; }));
+                if (monitorButton != null && !monitorButton.IsDisposed)
+                    BeginInvoke(new Action(() => { if (!monitorButton.IsDisposed) monitorButton.Text = "Surveiller IPTV"; }));
             }
             monitorCancel?.Dispose();
             monitorCancel = null;
