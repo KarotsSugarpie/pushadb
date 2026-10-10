@@ -163,6 +163,7 @@ internal sealed class MainForm : Form
     private void Append(string message)
     {
         if (IsDisposed) return;
+        if (log.InvokeRequired) { log.BeginInvoke(new Action(() => Append(message))); return; }
         log.AppendText($"[{DateTime.Now:HH:mm:ss}] {message}{Environment.NewLine}");
     }
     private static string ResolveAdb()
