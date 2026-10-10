@@ -17,7 +17,7 @@ internal static class Program
     }
 }
 
-internal sealed class MainForm : Form
+internal sealed partial class MainForm : Form
 {
     private readonly TextBox ip = new() { Text = "192.168.254.161", Width = 170 };
     private readonly NumericUpDown port = new() { Minimum = 1, Maximum = 65535, Value = 5555, Width = 72 };
@@ -49,12 +49,13 @@ internal sealed class MainForm : Form
         StartPosition = FormStartPosition.CenterScreen;
         adbPath = ResolveAdb();
 
-        var outer = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(20), ColumnCount = 1, RowCount = 6 };
+        var outer = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(20), ColumnCount = 1, RowCount = 7 };
         outer.RowStyles.Add(new RowStyle(SizeType.Absolute, 78));
         outer.RowStyles.Add(new RowStyle(SizeType.Absolute, 110));
         outer.RowStyles.Add(new RowStyle(SizeType.Absolute, 180));
         outer.RowStyles.Add(new RowStyle(SizeType.Absolute, 135));
         outer.RowStyles.Add(new RowStyle(SizeType.Absolute, 122));
+        outer.RowStyles.Add(new RowStyle(SizeType.Absolute, 174));
         outer.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         Controls.Add(outer);
 
@@ -131,9 +132,11 @@ internal sealed class MainForm : Form
         console.Controls.Add(commandRow);
         outer.Controls.Add(console, 0, 4);
 
+        outer.Controls.Add(BuildTweakPanel(), 0, 5);
+
         var history = Group("JOURNAL DES OPÉRATIONS");
         history.Controls.Add(log);
-        outer.Controls.Add(history, 0, 5);
+        outer.Controls.Add(history, 0, 6);
 
         FormClosing += (_, _) => { monitorCancel?.Cancel(); };
         Append("PushADB prêt. ADB : " + adbPath);
