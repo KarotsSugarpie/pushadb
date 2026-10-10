@@ -60,3 +60,7 @@ In **Console ADB et diagnostic IPTV**, click **Surveiller IPTV** after connectin
 ## Build without a GitHub runner
 
 On a Windows computer with the .NET 8 SDK installed, clone this repository and run `powershell -ExecutionPolicy Bypass -File .\\build-local.ps1` in its root. This creates `PushADB-Windows-x64.zip` locally with the EXE and Google ADB tools. Running the script requires internet access to fetch Google's official tools. The produced application still requires authorization on the Android device.
+
+## Android TweakUI
+
+The Windows interface now contains an **ANDROID TWEAKUI** section with a curated catalog of screen timeout, brightness, rotation, animation speeds, input effects and text size presets. Use **Lire l'état** before changing a setting. **Appliquer** first reads and displays the current value and asks for explicit confirmation. **Annuler dernière modification** restores the last saved value for that key within the running session. **Inventaire Android** gathers model, OS version, screen size/density, display/audio reports and disk usage. Android TV and Fire OS may ignore settings or deny writes; the app reports when the readback does not match. Do not assume all presets apply to all devices. Settings backups for undo are currently in-memory only and do not survive restarting PushADB.
