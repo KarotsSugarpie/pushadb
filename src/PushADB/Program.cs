@@ -49,13 +49,14 @@ internal sealed partial class MainForm : Form
         StartPosition = FormStartPosition.CenterScreen;
         adbPath = ResolveAdb();
 
-        var outer = new TableLayoutPanel { Dock = DockStyle.Fill, AutoScroll = true, Padding = new Padding(20), ColumnCount = 1, RowCount = 7 };
+        var outer = new TableLayoutPanel { Dock = DockStyle.Fill, AutoScroll = true, Padding = new Padding(20), ColumnCount = 1, RowCount = 8 };
         outer.RowStyles.Add(new RowStyle(SizeType.Absolute, 78));
         outer.RowStyles.Add(new RowStyle(SizeType.Absolute, 110));
         outer.RowStyles.Add(new RowStyle(SizeType.Absolute, 180));
         outer.RowStyles.Add(new RowStyle(SizeType.Absolute, 135));
         outer.RowStyles.Add(new RowStyle(SizeType.Absolute, 122));
         outer.RowStyles.Add(new RowStyle(SizeType.Absolute, 174));
+        outer.RowStyles.Add(new RowStyle(SizeType.Absolute, 150));
         outer.RowStyles.Add(new RowStyle(SizeType.Absolute, 235));
         Controls.Add(outer);
 
@@ -134,9 +135,11 @@ internal sealed partial class MainForm : Form
 
         outer.Controls.Add(BuildTweakPanel(), 0, 5);
 
+        outer.Controls.Add(BuildCatalogPanel(), 0, 6);
+
         var history = Group("JOURNAL DES OPÉRATIONS");
         history.Controls.Add(log);
-        outer.Controls.Add(history, 0, 6);
+        outer.Controls.Add(history, 0, 7);
 
         FormClosing += (_, _) => { monitorCancel?.Cancel(); };
         Append("PushADB prêt. ADB : " + adbPath);
