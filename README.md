@@ -64,3 +64,11 @@ On a Windows computer with the .NET 8 SDK installed, clone this repository and r
 ## Android TweakUI
 
 The Windows interface now contains an **ANDROID TWEAKUI** section with a curated catalog of screen timeout, brightness, rotation, animation speeds, input effects and text size presets. Use **Lire l'état** before changing a setting. **Appliquer** first reads and displays the current value and asks for explicit confirmation. **Annuler dernière modification** restores the last saved value for that key within the running session. **Inventaire Android** gathers model, OS version, screen size/density, display/audio reports and disk usage. Android TV and Fire OS may ignore settings or deny writes; the app reports when the readback does not match. Do not assume all presets apply to all devices. Settings backups for undo are currently in-memory only and do not survive restarting PushADB.
+
+## Catalogue d'applications
+
+Une section **CATALOGUE D'APPLICATIONS** permet de choisir une catégorie et un logiciel, d'ouvrir la page de l'éditeur, de télécharger un APK officiel lorsque son URL directe est connue, puis de l'installer sur l'appareil ADB sélectionné. Les APK téléchargés sont stockés dans `%LOCALAPPDATA%\\PushADB\\APKs`. Le bouton d'installation demande confirmation; l'option `-r` permet les mises à jour compatibles. Lorsque l'éditeur fournit seulement une page de téléchargement, l'application l'ouvre pour choisir la bonne variante, puis on peut installer le fichier avec la fonction générale **Parcourir...**. Le téléchargement refuse les réponses non-APK ou trop volumineuses.
+
+Les entrées initiales comprennent **TiviMate, VLC ARM 32/64, Kodi, SmartTube, F-Droid, Downloader, Send Files to TV, Jellyfin, Plex, YouTube, Netflix, Disney+ et Spotify**. Un lien vers la page officielle ne signifie pas que l'éditeur distribue un APK librement téléchargeable. Pour les applications avec DRM, utiliser la boutique de l'appareil. L'installation ADB exige une autorisation Android valide, et n'est pas disponible pour Vega OS. La sélection automatique d'ABI n'est pas encore implémentée, donc il faut choisir la version VLC correspondant à l'architecture.
+
+**Aucune application préinstallée ou compte de diffusion n'est contourné.** Le catalogue ne fournit aucun service IPTV ni contenu vidéo.
