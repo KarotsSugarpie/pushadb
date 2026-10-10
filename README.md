@@ -52,3 +52,7 @@ Requires Windows and .NET 8 SDK for development.
 ## IPTV / Chromecast diagnosis
 
 PushADB includes a **read-only ADB console** and seven diagnostic profiles. Connect an authorized device, select **Diagnostic complet (lecture seule)**, click **Analyser**, then **Exporter journal**. Profiles inspect reboot reasons, uptime, thermal service, memory, video codec, Wi-Fi/connectivity, application exit history and a recent logcat snapshot. Console commands are restricted to a supported diagnostic allowlist; this is not an unrestricted shell. A power dropout may leave no useful Android logs, so compare with a known-good original mains power adapter and cable. For freezes, test another player or temporarily disable hardware decoding in the IPTV application when available. Logs may contain IPs and package names; review before sharing.
+
+### Live IPTV reboot monitoring
+
+In **Console ADB et diagnostic IPTV**, click **Surveiller IPTV** after connecting and authorizing your Chromecast. Play an IPTV channel. The monitor checks ADB availability periodically, reconnects after a drop, reads boot ID to establish an actual reboot when supported, and collects post-reboot logs. Click **Arrêter surveillance** and **Exporter journal** to save the findings. A missing ADB connection by itself does not prove a reboot; Wi-Fi outages can look similar. A loss of mains power may erase relevant logs. For a complete restart with Google logo, test an original or known-good compatible wall adapter and USB-C cable and check device ventilation before attempting software changes.
