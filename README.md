@@ -56,3 +56,7 @@ PushADB includes a **read-only ADB console** and seven diagnostic profiles. Conn
 ### Live IPTV reboot monitoring
 
 In **Console ADB et diagnostic IPTV**, click **Surveiller IPTV** after connecting and authorizing your Chromecast. Play an IPTV channel. The monitor checks ADB availability periodically, reconnects after a drop, reads boot ID to establish an actual reboot when supported, and collects post-reboot logs. Click **Arrêter surveillance** and **Exporter journal** to save the findings. A missing ADB connection by itself does not prove a reboot; Wi-Fi outages can look similar. A loss of mains power may erase relevant logs. For a complete restart with Google logo, test an original or known-good compatible wall adapter and USB-C cable and check device ventilation before attempting software changes.
+
+## Build without a GitHub runner
+
+On a Windows computer with the .NET 8 SDK installed, clone this repository and run `powershell -ExecutionPolicy Bypass -File .\\build-local.ps1` in its root. This creates `PushADB-Windows-x64.zip` locally with the EXE and Google ADB tools. Running the script requires internet access to fetch Google's official tools. The produced application still requires authorization on the Android device.
