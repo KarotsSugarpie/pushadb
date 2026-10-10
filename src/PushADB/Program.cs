@@ -41,22 +41,22 @@ internal sealed partial class MainForm : Form
     public MainForm()
     {
         Text = "PushADB  •  Android TV / Fire TV Manager";
-        MinimumSize = new Size(930, 680);
-        Size = new Size(1080, 770);
+        MinimumSize = new Size(930, 730);
+        Size = new Size(1160, 920);
         BackColor = Color.FromArgb(23, 32, 48);
         ForeColor = Color.WhiteSmoke;
         Font = new Font("Segoe UI", 10);
         StartPosition = FormStartPosition.CenterScreen;
         adbPath = ResolveAdb();
 
-        var outer = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(20), ColumnCount = 1, RowCount = 7 };
+        var outer = new TableLayoutPanel { Dock = DockStyle.Fill, AutoScroll = true, Padding = new Padding(20), ColumnCount = 1, RowCount = 7 };
         outer.RowStyles.Add(new RowStyle(SizeType.Absolute, 78));
         outer.RowStyles.Add(new RowStyle(SizeType.Absolute, 110));
         outer.RowStyles.Add(new RowStyle(SizeType.Absolute, 180));
         outer.RowStyles.Add(new RowStyle(SizeType.Absolute, 135));
         outer.RowStyles.Add(new RowStyle(SizeType.Absolute, 122));
         outer.RowStyles.Add(new RowStyle(SizeType.Absolute, 174));
-        outer.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        outer.RowStyles.Add(new RowStyle(SizeType.Absolute, 235));
         Controls.Add(outer);
 
         var header = new Panel { Dock = DockStyle.Fill };
