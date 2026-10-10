@@ -1,0 +1,55 @@
+name: Build PushADB Windows
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore and build
+        shell: pwsh
+        run: |
+          dotnet restore src/PushADB/PushADB.csproj
+          dotnet build src/PushADB/PushADB.csproj -c Release --no-restore
+
+      - name: Publish portable Windows x64
+        shell: pwsh
+        run: |
+          dotnet publish src/PushADB/PushADB.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -o dist
+
+      - name: Bundle official Google platform-tools
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri 'https://dl.google.com/android/repository/platform-tools-latest-windows.zip' -OutFile "$env:RUNNER_TEMP\platform-tools.zip"
+          Expand-Archive "$env:RUNNER_TEMP\platform-tools.zip" -DestinationPath "$env:RUNNER_TEMP\adb-tools"
+          Copy-Item "$env:RUNNER_TEMP\adb-tools\platform-tools" 'dist/platform-tools' -Recurse
+
+      - name: Package
+        shell: pwsh
+        run: |
+          Copy-Item README.md dist/README.md
+          Compress-Archive -Path dist/* -DestinationPath PushADB-Windows-x64.zip -Force
+
+      - name: Upload executable ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: PushADB-Windows-x64
+          path: PushADB-Windows-x64.zip
+          if-no-files-found: error
+          retention-days: 30
