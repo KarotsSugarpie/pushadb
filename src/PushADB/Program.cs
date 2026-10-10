@@ -357,8 +357,8 @@ internal sealed class MainForm : Form
                 {
                     // Do not use connected device global state: always address the intended endpoint.
                     var state = await Adb("devices");
-                    var online = state.Output.Split('\\n').Any(line =>
-                        Regex.IsMatch(line.Trim(), "^" + Regex.Escape(endpoint) + @"\\s+device\\s*$"));
+                    var online = state.Output.Split('\n').Any(line =>
+                        Regex.IsMatch(line.Trim(), "^" + Regex.Escape(endpoint) + @"\s+device\s*$"));
                     if (!online)
                     {
                         if (!lost) Append("ALERTE : connexion ADB perdue. Redémarrage ou interruption réseau possible.");
@@ -400,7 +400,7 @@ internal sealed class MainForm : Form
             if (!IsDisposed)
             {
                 Append("Surveillance terminée. Utilise Exporter journal pour sauvegarder les résultats.");
-                if (monitorButton != null) monitorButton.Text = "Surveiller IPTV";
+                if (monitorButton != null && !monitorButton.IsDisposed)\n                    BeginInvoke(new Action(() => { if (!monitorButton.IsDisposed) monitorButton.Text = "Surveiller IPTV"; }));
             }
             monitorCancel?.Dispose();
             monitorCancel = null;
