@@ -11,9 +11,9 @@ if (-not (Get-Command dotnet -ErrorAction SilentlyContinue)) {
 }
 dotnet --version
 if ($LASTEXITCODE -ne 0) { throw "dotnet indisponible" }
-dotnet restore $project
-if ($LASTEXITCODE -ne 0) { throw "Restore echoue" }
-dotnet publish $project -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -o $dist
+dotnet restore $project -r win-x64 --configfile (Join-Path $PSScriptRoot "NuGet.Config") --force
+if ($LASTEXITCODE -ne 0) { throw "Restore echoue : verifier acces HTTPS a api.nuget.org (443)" }
+dotnet publish $project -c Release -r win-x64 --self-contained true --no-restore -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -o $dist
 if ($LASTEXITCODE -ne 0) { throw "Compilation echouee" }
 $adbDir = Join-Path $dist "platform-tools"
 if (-not (Test-Path (Join-Path $adbDir "adb.exe"))) {
