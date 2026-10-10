@@ -33,6 +33,9 @@ internal sealed class MainForm : Form
     private readonly string adbPath;
     private string? selectedDevice;
     private bool busy;
+    private CancellationTokenSource? monitorCancel;
+    private Button? monitorButton;
+    private string? monitoringEndpoint;
     private readonly SemaphoreSlim adbLock = new(1, 1);
 
     public MainForm()
@@ -118,6 +121,8 @@ internal sealed class MainForm : Form
         diagnosticRow.Controls.Add(diagnostic);
         diagnosticRow.Controls.Add(B("Analyser", async () => await RunDiagnostic()));
         diagnosticRow.Controls.Add(B("Exporter journal", () => { ExportLog(); return Task.CompletedTask; }));
+        monitorButton = B("Surveiller IPTV", StartOrStopMonitoring);
+        diagnosticRow.Controls.Add(monitorButton);
         console.Controls.Add(diagnosticRow);
         var commandRow = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 42, AutoScroll = true, WrapContents = false };
         commandRow.Controls.Add(L("Commande ADB"));
@@ -130,7 +135,7 @@ internal sealed class MainForm : Form
         history.Controls.Add(log);
         outer.Controls.Add(history, 0, 5);
 
-        FormClosing += (_, _) => adbLock.Dispose();
+        FormClosing += (_, _) => { monitorCancel?.Cancel(); };
         Append("PushADB prêt. ADB : " + adbPath);
         Append("Activez le débogage sur l'appareil et acceptez l'empreinte RSA sur le téléviseur.");
     }
@@ -319,6 +324,88 @@ internal sealed class MainForm : Form
         if (!allowed.TryGetValue(command.Trim(), out var args))
             throw new InvalidOperationException("Commande non autorisée dans cette console de diagnostic. Utilise une commande en lecture seule prise en charge (ex. shell dumpsys battery, shell uptime, logcat -d -t 400).");
         return args;
+    }
+
+    private async Task StartOrStopMonitoring()
+    {
+        if (monitorCancel != null)
+        {
+            monitorCancel.Cancel();
+            Append("Arrêt de la surveillance demandé.");
+            return;
+        }
+        var endpoint = RequireDevice();
+        monitoringEndpoint = endpoint;
+        monitorCancel = new CancellationTokenSource();
+        if (monitorButton != null) monitorButton.Text = "Arrêter surveillance";
+        Append("=== SURVEILLANCE IPTV : " + endpoint + " ===");
+        Append("Lance la chaîne IPTV problématique. Un redémarrage complet coupe temporairement ADB.");
+        var token = monitorCancel.Token;
+        _ = MonitorDevice(endpoint, token);
+        await Task.CompletedTask;
+    }
+
+    private async Task MonitorDevice(string endpoint, CancellationToken token)
+    {
+        bool lost = false;
+        string? previousBoot = null;
+        try
+        {
+            while (!token.IsCancellationRequested)
+            {
+                try
+                {
+                    // Do not use connected device global state: always address the intended endpoint.
+                    var state = await Adb("devices");
+                    var online = state.Output.Split('\\n').Any(line =>
+                        Regex.IsMatch(line.Trim(), "^" + Regex.Escape(endpoint) + @"\\s+device\\s*$"));
+                    if (!online)
+                    {
+                        if (!lost) Append("ALERTE : connexion ADB perdue. Redémarrage ou interruption réseau possible.");
+                        lost = true;
+                        await Adb("disconnect", endpoint);
+                        await Adb("connect", endpoint);
+                    }
+                    else
+                    {
+                        if (lost)
+                        {
+                            Append("RECONNEXION : appareil à nouveau accessible. Collecte des causes de redémarrage...");
+                            foreach (var command in new[] { "shell uptime", "shell getprop sys.boot.reason", "shell getprop ro.boot.bootreason", "shell dumpsys thermalservice", "shell dumpsys activity exit-info", "logcat -d -t 400" })
+                            {
+                                var r = await Adb(new[] { "-s", endpoint }.Concat(ConsoleArgs(command)).ToArray());
+                                Append("> " + command + Environment.NewLine + (r.Output.Length > 7000 ? r.Output[..7000] + " [tronqué]" : r.Output));
+                            }
+                            lost = false;
+                        }
+                        var uptime = await Adb("-s", endpoint, "shell", "cat", "/proc/sys/kernel/random/boot_id");
+                        if (uptime.ExitCode == 0 && !string.IsNullOrWhiteSpace(uptime.Output))
+                        {
+                            var boot = uptime.Output.Trim();
+                            if (previousBoot != null && previousBoot != boot)
+                            {
+                                Append("REDÉMARRAGE SYSTÈME CONFIRMÉ : identifiant du démarrage modifié.");
+                            }
+                            previousBoot = boot;
+                        }
+                    }
+                }
+                catch (Exception ex) { Append("Surveillance : " + ex.Message); }
+                await Task.Delay(TimeSpan.FromSeconds(8), token);
+            }
+        }
+        catch (OperationCanceledException) { }
+        finally
+        {
+            if (!IsDisposed)
+            {
+                Append("Surveillance terminée. Utilise Exporter journal pour sauvegarder les résultats.");
+                if (monitorButton != null) monitorButton.Text = "Surveiller IPTV";
+            }
+            monitorCancel?.Dispose();
+            monitorCancel = null;
+            monitoringEndpoint = null;
+        }
     }
 
     private async Task RunConsole()
