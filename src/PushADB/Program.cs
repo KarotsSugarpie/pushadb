@@ -28,6 +28,8 @@ internal sealed class MainForm : Form
     private readonly Label deviceInfo = new() { Text = "Appareil : aucun", AutoSize = true };
     private readonly ComboBox preset = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 340 };
     private readonly List<Button> actionButtons = new();
+    private readonly TextBox consoleCommand = new() { Width = 480, Text = "shell dumpsys battery" };
+    private readonly ComboBox diagnostic = new() { Width = 255, DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly string adbPath;
     private string? selectedDevice;
     private bool busy;
@@ -44,11 +46,12 @@ internal sealed class MainForm : Form
         StartPosition = FormStartPosition.CenterScreen;
         adbPath = ResolveAdb();
 
-        var outer = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(20), ColumnCount = 1, RowCount = 5 };
+        var outer = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(20), ColumnCount = 1, RowCount = 6 };
         outer.RowStyles.Add(new RowStyle(SizeType.Absolute, 78));
         outer.RowStyles.Add(new RowStyle(SizeType.Absolute, 110));
         outer.RowStyles.Add(new RowStyle(SizeType.Absolute, 180));
         outer.RowStyles.Add(new RowStyle(SizeType.Absolute, 135));
+        outer.RowStyles.Add(new RowStyle(SizeType.Absolute, 122));
         outer.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         Controls.Add(outer);
 
@@ -108,9 +111,24 @@ internal sealed class MainForm : Form
         });
         outer.Controls.Add(configuration, 0, 3);
 
+        var console = Group("CONSOLE ADB ET DIAGNOSTIC IPTV");
+        diagnostic.Items.AddRange(new object[] { "Diagnostic complet (lecture seule)", "Batterie / alimentation", "Mémoire et processus", "Températures et thermique", "Wi-Fi et réseau", "Historique des redémarrages", "Erreurs vidéo et plantages" });
+        diagnostic.SelectedIndex = 0;
+        var diagnosticRow = Row();
+        diagnosticRow.Controls.Add(diagnostic);
+        diagnosticRow.Controls.Add(B("Analyser", async () => await RunDiagnostic()));
+        diagnosticRow.Controls.Add(B("Exporter journal", () => { ExportLog(); return Task.CompletedTask; }));
+        console.Controls.Add(diagnosticRow);
+        var commandRow = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 42, AutoScroll = true, WrapContents = false };
+        commandRow.Controls.Add(L("Commande ADB"));
+        commandRow.Controls.Add(consoleCommand);
+        commandRow.Controls.Add(B("Exécuter", async () => await RunConsole()));
+        console.Controls.Add(commandRow);
+        outer.Controls.Add(console, 0, 4);
+
         var history = Group("JOURNAL DES OPÉRATIONS");
         history.Controls.Add(log);
-        outer.Controls.Add(history, 0, 4);
+        outer.Controls.Add(history, 0, 5);
 
         FormClosing += (_, _) => adbLock.Dispose();
         Append("PushADB prêt. ADB : " + adbPath);
@@ -266,6 +284,80 @@ internal sealed class MainForm : Form
         Append(r.Output);
         if (r.ExitCode != 0) throw new InvalidOperationException("Impossible d'ouvrir cette application.");
     }
+    private void ExportLog()
+    {
+        using var dialog = new SaveFileDialog { Filter = "Journal texte (*.txt)|*.txt", FileName = "PushADB-diagnostic-" + DateTime.Now.ToString("yyyyMMdd-HHmmss") + ".txt" };
+        if (dialog.ShowDialog(this) == DialogResult.OK)
+        {
+            File.WriteAllText(dialog.FileName, log.Text, Encoding.UTF8);
+            Append("Journal exporté : " + dialog.FileName);
+        }
+    }
+
+    // Console volontairement en lecture seule : pas de shell arbitraire,
+    // d'effacement de données ou de modification de paramètres.
+    private static string[] ConsoleArgs(string command)
+    {
+        var allowed = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["shell dumpsys battery"] = new[] { "shell", "dumpsys", "battery" },
+            ["shell dumpsys meminfo"] = new[] { "shell", "dumpsys", "meminfo" },
+            ["shell dumpsys thermalservice"] = new[] { "shell", "dumpsys", "thermalservice" },
+            ["shell dumpsys wifi"] = new[] { "shell", "dumpsys", "wifi" },
+            ["shell dumpsys connectivity"] = new[] { "shell", "dumpsys", "connectivity" },
+            ["shell dumpsys activity exit-info"] = new[] { "shell", "dumpsys", "activity", "exit-info" },
+            ["shell getprop ro.product.model"] = new[] { "shell", "getprop", "ro.product.model" },
+            ["shell getprop ro.build.version.release"] = new[] { "shell", "getprop", "ro.build.version.release" },
+            ["shell getprop sys.boot.reason"] = new[] { "shell", "getprop", "sys.boot.reason" },
+            ["shell getprop ro.boot.bootreason"] = new[] { "shell", "getprop", "ro.boot.bootreason" },
+            ["shell uptime"] = new[] { "shell", "uptime" },
+            ["shell df -h"] = new[] { "shell", "df", "-h" },
+            ["shell dumpsys media.codec"] = new[] { "shell", "dumpsys", "media.codec" },
+            ["logcat -d -t 400"] = new[] { "logcat", "-d", "-t", "400" },
+            ["devices -l"] = new[] { "devices", "-l" }
+        };
+        if (!allowed.TryGetValue(command.Trim(), out var args))
+            throw new InvalidOperationException("Commande non autorisée dans cette console de diagnostic. Utilise une commande en lecture seule prise en charge (ex. shell dumpsys battery, shell uptime, logcat -d -t 400).");
+        return args;
+    }
+
+    private async Task RunConsole()
+    {
+        var endpoint = RequireDevice();
+        var cmd = consoleCommand.Text.Trim();
+        var args = ConsoleArgs(cmd);
+        var effective = args[0] == "devices" ? args : new[] { "-s", endpoint }.Concat(args).ToArray();
+        var r = await Adb(effective);
+        Append("> adb " + cmd);
+        Append(r.Output.Length > 16000 ? r.Output.Substring(0, 16000) + "\\n[Sortie tronquée]" : r.Output);
+        if (r.ExitCode != 0) Append("Code retour : " + r.ExitCode);
+    }
+
+    private async Task RunDiagnostic()
+    {
+        var endpoint = RequireDevice();
+        var title = diagnostic.SelectedItem?.ToString() ?? "";
+        string[] selected = title switch
+        {
+            "Batterie / alimentation" => new[] { "shell dumpsys battery", "shell getprop sys.boot.reason" },
+            "Mémoire et processus" => new[] { "shell dumpsys meminfo", "shell df -h" },
+            "Températures et thermique" => new[] { "shell dumpsys thermalservice" },
+            "Wi-Fi et réseau" => new[] { "shell dumpsys wifi", "shell dumpsys connectivity" },
+            "Historique des redémarrages" => new[] { "shell uptime", "shell getprop sys.boot.reason", "shell getprop ro.boot.bootreason", "shell dumpsys activity exit-info" },
+            "Erreurs vidéo et plantages" => new[] { "shell dumpsys media.codec", "logcat -d -t 400" },
+            _ => new[] { "shell uptime", "shell dumpsys battery", "shell dumpsys thermalservice", "shell dumpsys meminfo", "shell getprop sys.boot.reason", "shell dumpsys activity exit-info", "logcat -d -t 400" }
+        };
+        Append("=== DIAGNOSTIC " + title + " — " + endpoint + " ===");
+        foreach (var command in selected)
+        {
+            var r = await Adb(new[] { "-s", endpoint }.Concat(ConsoleArgs(command)).ToArray());
+            Append("> adb " + command);
+            Append(r.Output.Length > 12000 ? r.Output.Substring(0, 12000) + "\\n[Sortie tronquée]" : r.Output);
+            if (r.ExitCode != 0) Append("Commande indisponible ou refusée : " + r.ExitCode);
+        }
+        Append("Diagnostic terminé. Exportez le journal pour analyser les redémarrages. Certaines commandes peuvent ne pas être prises en charge par Fire OS.");
+    }
+
     private async Task ApplyPreset()
     {
         var endpoint = RequireDevice();
