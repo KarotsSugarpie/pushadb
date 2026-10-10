@@ -48,3 +48,7 @@ dotnet run --project src/PushADB/PushADB.csproj
 ```
 
 Requires Windows and .NET 8 SDK for development.
+
+## IPTV / Chromecast diagnosis
+
+PushADB includes a **read-only ADB console** and seven diagnostic profiles. Connect an authorized device, select **Diagnostic complet (lecture seule)**, click **Analyser**, then **Exporter journal**. Profiles inspect reboot reasons, uptime, thermal service, memory, video codec, Wi-Fi/connectivity, application exit history and a recent logcat snapshot. Console commands are restricted to a supported diagnostic allowlist; this is not an unrestricted shell. A power dropout may leave no useful Android logs, so compare with a known-good original mains power adapter and cable. For freezes, test another player or temporarily disable hardware decoding in the IPTV application when available. Logs may contain IPs and package names; review before sharing.
