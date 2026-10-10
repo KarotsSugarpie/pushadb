@@ -126,7 +126,7 @@ internal sealed partial class MainForm
             }
             await using (var file = File.OpenRead(temporary))
             {
-                Span<byte> hdr = stackalloc byte[4];
+                var hdr = new byte[4];
                 if (file.Read(hdr) != 4 || hdr[0] != 0x50 || hdr[1] != 0x4B)
                     throw new InvalidOperationException("La réponse du site n'est pas une archive APK valide. Aucun fichier ne sera installé.");
             }
