@@ -73,7 +73,7 @@ internal sealed class MainForm : Form
         var installation = Group("APPLICATIONS / APK");
         var apkRow = Row();
         apkRow.Controls.Add(L("Fichier APK")); apkRow.Controls.Add(apk);
-        apkRow.Controls.Add(B("Parcourir...", PickApk));
+        apkRow.Controls.Add(B("Parcourir...", () => { PickApk(); return Task.CompletedTask; }));
         apkRow.Controls.Add(B("Installer / Mettre à jour", async () => await Install()));
         installation.Controls.Add(apkRow);
         var appRow = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 62, AutoScroll = true, WrapContents = true, Padding = new Padding(3) };
@@ -120,7 +120,6 @@ internal sealed class MainForm : Form
     private static FlowLayoutPanel Row() => new() { Dock = DockStyle.Top, Height = 64, AutoScroll = true, WrapContents = true, Padding = new Padding(4, 7, 4, 2) };
     private static Label L(string text) => new() { Text = text, AutoSize = true, Margin = new Padding(7, 11, 5, 0) };
     private static GroupBox Group(string title) => new() { Text = title, Dock = DockStyle.Fill, Padding = new Padding(10, 12, 10, 8), ForeColor = Color.FromArgb(226, 233, 244) };
-    private Button B(string title, Action action) => B(title, () => { action(); return Task.CompletedTask; });
     private Button B(string title, Func<Task> action)
     {
         var button = new Button { Text = title, AutoSize = true, Height = 36, FlatStyle = FlatStyle.Flat, BackColor = Color.FromArgb(33, 79, 111), ForeColor = Color.WhiteSmoke, Margin = new Padding(5, 3, 5, 3), Padding = new Padding(8, 0, 8, 0) };
