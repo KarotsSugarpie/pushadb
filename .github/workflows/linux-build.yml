@@ -27,5 +27,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: PushADB-Linux-Preview
-          path: PushADB-Linux-Preview.tar.gz
+          path: |
+            PushADB-Linux-Preview.tar.gz
+            PushADB-Linux-Preview.tar.gz.sha256
           if-no-files-found: error
