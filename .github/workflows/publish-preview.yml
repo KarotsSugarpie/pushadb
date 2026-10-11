@@ -30,6 +30,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ inputs.tag }}
         run: |
-          gh release create "$TAG" PushADB-Linux-Preview.tar.gz \
+          gh release create "$TAG" PushADB-Linux-Preview.tar.gz PushADB-Linux-Preview.tar.gz.sha256 \
             --title "PushADB $TAG — Linux Preview" \
             --notes-file RELEASE_NOTES.md --prerelease --target "$GITHUB_SHA"
