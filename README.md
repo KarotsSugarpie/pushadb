@@ -219,3 +219,21 @@ Les signalements de bogues, propositions et contributions sont les bienvenus. Pr
 The Windows interface now starts in **English** on first launch. Use the **Language / Langue** selector at the top right to switch between **English** and **Français**. Your choice is saved to `%LOCALAPPDATA%\\PushADB\\language.txt` and reloaded on the next start. The main interface and common choice lists are translated; some diagnostic details, device-returned ADB messages and advanced preset descriptions may still appear in their original language during this preview.
 
 L'interface démarre en **anglais** au premier lancement. Le sélecteur **Language / Langue** en haut à droite permet de passer au **français**. Le choix est conservé au prochain démarrage. Certains détails de diagnostic et descriptions avancées restent à traduire dans cette préversion.
+
+## Linux preview / Préversion Linux
+
+A native Linux GUI has been added in `linux/pushadb.py` using Python 3 and Tkinter. Linux functions currently cover connection by IPv4 + port, APK installation, basic TweakUI with session rollback, Android diagnostics and log export. Linux does **not** yet include every Windows catalog/monitoring feature.
+
+**Ubuntu / Debian installation:**
+```bash
+sudo apt update
+sudo apt install -y python3 python3-tk adb
+git clone https://github.com/KarotsSugarpie/pushadb.git
+cd pushadb
+python3 linux/pushadb.py
+```
+Or run `bash build-linux.sh`, extract `PushADB-Linux-Preview.tar.gz`, and launch `PushADB-Linux/start.sh`.
+
+**GitHub builds:** [Linux artifact workflow](../../actions/workflows/linux-build.yml). The separate [Publish PushADB Linux Preview Release](../../actions/workflows/publish-preview.yml) workflow can be manually triggered with a new preview tag. Publication of a GitHub **Release** is distinct from the existing Actions build artifact.
+
+**Français :** L'édition Linux native utilise Python 3, Tkinter et ADB. Elle peut se lancer sur Ubuntu/Debian après installation de `python3`, `python3-tk` et `adb`. La préversion Linux propose les fonctions essentielles mais ne possède pas encore tout le catalogue avancé de Windows.
