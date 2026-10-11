@@ -213,3 +213,9 @@ Les signalements de bogues, propositions et contributions sont les bienvenus. Pr
 ---
 
 **PushADB** — Windows ADB management and diagnostics for supported streaming devices.
+
+## Language / Langue
+
+The Windows interface now starts in **English** on first launch. Use the **Language / Langue** selector at the top right to switch between **English** and **Français**. Your choice is saved to `%LOCALAPPDATA%\\PushADB\\language.txt` and reloaded on the next start. The main interface and common choice lists are translated; some diagnostic details, device-returned ADB messages and advanced preset descriptions may still appear in their original language during this preview.
+
+L'interface démarre en **anglais** au premier lancement. Le sélecteur **Language / Langue** en haut à droite permet de passer au **français**. Le choix est conservé au prochain démarrage. Certains détails de diagnostic et descriptions avancées restent à traduire dans cette préversion.
