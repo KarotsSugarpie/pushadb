@@ -1,0 +1,35 @@
+name: Publish PushADB Linux Preview Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'New preview tag, e.g. v0.1.0-preview.1'
+        required: true
+        default: 'v0.1.0-preview.1'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check tag
+        shell: bash
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-preview\.[0-9]+$ ]] || { echo "Invalid preview tag"; exit 1; }
+      - name: Validate and package Linux
+        run: bash build-linux.sh
+      - name: Publish GitHub pre-release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          gh release create "$TAG" PushADB-Linux-Preview.tar.gz \
+            --title "PushADB $TAG — Linux Preview" \
+            --notes-file RELEASE_NOTES.md --prerelease --target "$GITHUB_SHA"
