@@ -44,6 +44,7 @@ try {
         Expand-Archive $tempZip -DestinationPath $tempDir -Force
         Copy-Item (Join-Path $tempDir "platform-tools") $adbDir -Recurse -Force
     }
+    if (-not (Test-Path (Join-Path $adbDir "adb.exe"))) { throw "ADB introuvable dans dist/platform-tools" }
     Copy-Item (Join-Path $PSScriptRoot "README.md") (Join-Path $dist "README.md") -Force
     Copy-Item (Join-Path $dist "*") $staging -Recurse -Force -ErrorAction Stop
     $tmpZip = Join-Path $env:TEMP ("PushADB-" + [guid]::NewGuid().ToString("N") + ".zip")
@@ -52,7 +53,7 @@ try {
         Add-Type -AssemblyName System.IO.Compression
         $archive = [System.IO.Compression.ZipFile]::OpenRead($tmpZip)
         try {
-            $names = @($archive.Entries | ForEach-Object FullName)
+            $names = @($archive.Entries | ForEach-Object { $_.FullName.Replace("\\", "/") })
             if ($names -notcontains "PushADB.exe") { throw "ZIP invalide : PushADB.exe manquant" }
             if ($names -notcontains "platform-tools/adb.exe") { throw "ZIP invalide : ADB manquant" }
         } finally { $archive.Dispose() }
