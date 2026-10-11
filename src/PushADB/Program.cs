@@ -64,6 +64,7 @@ internal sealed partial class MainForm : Form
         header.Controls.Add(new Label { Text = "PushADB", Font = new Font("Segoe UI", 25, FontStyle.Bold), AutoSize = true, Location = new Point(1, 0), ForeColor = Color.FromArgb(82, 202, 250) });
         header.Controls.Add(new Label { Text = "Gestionnaire ADB pour Fire TV et Google / Android TV", AutoSize = true, Location = new Point(3, 51), ForeColor = Color.Silver });
         outer.Controls.Add(header, 0, 0);
+        AddLanguageSwitcher(header);
 
         var connection = Group("CONNEXION");
         var connectionRow = Row();
@@ -142,6 +143,7 @@ internal sealed partial class MainForm : Form
         outer.Controls.Add(history, 0, 7);
 
         FormClosing += (_, _) => { monitorCancel?.Cancel(); };
+        InitializeLanguage();
         Append("PushADB prêt. ADB : " + adbPath);
         Append("Activez le débogage sur l'appareil et acceptez l'empreinte RSA sur le téléviseur.");
     }
