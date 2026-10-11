@@ -1,0 +1,31 @@
+name: PushADB Linux Preview
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'linux/**'
+      - 'build-linux.sh'
+      - '.github/workflows/linux-build.yml'
+  workflow_dispatch:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Python
+        run: python3 -m py_compile linux/pushadb.py
+      - name: Build Linux portable archive
+        run: bash build-linux.sh
+      - name: Upload Linux preview artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PushADB-Linux-Preview
+          path: PushADB-Linux-Preview.tar.gz
+          if-no-files-found: error
