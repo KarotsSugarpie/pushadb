@@ -53,11 +53,15 @@ try {
         Add-Type -AssemblyName System.IO.Compression
         $archive = [System.IO.Compression.ZipFile]::OpenRead($tmpZip)
         try {
-            $names = @($archive.Entries | ForEach-Object { $_.FullName.Replace("\\", "/") })
+            $names = @($archive.Entries | ForEach-Object { $_.FullName.Replace([char]92, [char]47) })
             if ($names -notcontains "PushADB.exe") { throw "ZIP invalide : PushADB.exe manquant" }
-            if ($names -notcontains "platform-tools/adb.exe") { throw ("ZIP invalide : ADB manquant. Entrees ADB : " + (($names | Where-Object { $_ -match "adb.exe$" }) -join ", ")) }
+            if (-not ($names | Where-Object { $_ -match "(^|/)platform-tools/adb\.exe$" })) { throw ("ZIP invalide : ADB manquant. Entrees ADB : " + (($names | Where-Object { $_ -match "adb.exe$" }) -join ", ")) }
         } finally { $archive.Dispose() }
         Move-Item $tmpZip $zip -Force
     } finally { if (Test-Path $tmpZip) { Remove-Item $tmpZip -Force } }
 } finally { Remove-Item $staging -Recurse -Force -ErrorAction SilentlyContinue }
+if (-not (Test-Path $zip)) { throw "Archive finale introuvable" }
+$hash = (Get-FileHash -Path $zip -Algorithm SHA256).Hash
+"$hash  PushADB-Windows-x64.zip" | Set-Content -Path (Join-Path $PSScriptRoot "PushADB-Windows-x64.zip.sha256") -Encoding ascii
 Write-Host "=== ZIP VERIFIE : $zip ===" -ForegroundColor Green
+Write-Host "SHA256: $hash"
