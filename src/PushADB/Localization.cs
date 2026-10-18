@@ -16,7 +16,7 @@ internal sealed partial class MainForm
         ["APPLICATIONS / APK"]="APPLICATIONS / APK",["Fichier APK"]="APK file",
         ["Parcourir..."]="Browse...",["Installer / Mettre à jour"]="Install / Update",
         ["Identifiant package"]="Package ID",["Vérifier"]="Check",["Ouvrir"]="Launch",
-        ["Infos appareil"]="Device details",["CONFIGURATION RAPIDE"]="QUICK SETTINGS",
+        ["Infos appareil"]="Device details",["Gestion TiviMate"]="TiviMate Manager",["CONFIGURATION RAPIDE"]="QUICK SETTINGS",
         ["Appliquer"]="Apply",["Lister les appareils"]="List devices",
         ["CONSOLE ADB ET DIAGNOSTIC IPTV"]="ADB CONSOLE & IPTV DIAGNOSTICS",
         ["Analyser"]="Run diagnostics",["Exporter journal"]="Export log",
