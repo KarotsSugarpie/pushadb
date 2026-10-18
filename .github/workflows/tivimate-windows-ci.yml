@@ -1,0 +1,25 @@
+name: Validate TiviMate Manager (Windows)
+
+on:
+  pull_request:
+    paths:
+      - 'src/PushADB/**'
+      - '.github/workflows/tivimate-windows-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Compile PushADB Windows
+        shell: pwsh
+        run: dotnet build src/PushADB/PushADB.csproj -c Release -warnaserror
