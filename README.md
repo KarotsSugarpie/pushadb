@@ -8,6 +8,10 @@ PushADB brings together device discovery by IP, APK installation, application in
 
 **Project status: active development / preview.** The code has been committed, but successful builds and comprehensive hardware testing have not yet been confirmed. Features may be incomplete or behave differently across firmware versions. Do not treat this as a finished release.
 
+## TiviMate Manager (Windows)
+
+The Windows build includes a **guided** TiviMate Manager accessible from the Applications / APK panel. It detects/launches TiviMate, sends Xtream, M3U and EPG field values **only to the currently focused TV field**, offers an ADB remote control, and copies native TiviMate `.tmb` backups between PC and TV Downloads/Documents. It does **not** automatically restore data, unlock Premium, use root, or depend on an unofficial configuration API. The operator must navigate TiviMate's menus and confirm any restore inside TiviMate. Credentials are not written to PushADB logs, but ADB text arguments can be visible to privileged PC processes. [Instructions and verification checklist](docs/TIVIMATE_MANAGER.md).
+
 ## Highlights
 
 | Area | What PushADB provides |
@@ -120,6 +124,12 @@ Bug reports and contributions are welcome once the project is public. Include de
 ---
 
 # Français
+
+### Gestion TiviMate (Windows)
+
+Un nouveau bouton **Gestion TiviMate** permet la configuration **assistée** Xtream/M3U/EPG par saisie ADB dans le champ sélectionné sur la télévision, la navigation à distance et la copie de sauvegardes `.tmb` entre la TV et le PC. L'utilisateur doit lui-même sélectionner le bon champ et confirmer la restauration depuis TiviMate. Aucun déblocage Premium, root ou API privée; les identifiants ne sont pas consignés dans les journaux, mais la saisie ADB peut exposer les arguments aux processus privilégiés du PC. [Guide détaillé](docs/TIVIMATE_MANAGER.md).
+
+
 
 > **PushADB** est une application Windows de gestion des appareils de diffusion Android utilisant une connexion Android Debug Bridge (ADB) autorisée.
 
