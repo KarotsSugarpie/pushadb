@@ -91,6 +91,7 @@ internal sealed partial class MainForm : Form
         appRow.Controls.Add(B("Vérifier", async () => await CheckPackage()));
         appRow.Controls.Add(B("Ouvrir", async () => await LaunchPackage()));
         appRow.Controls.Add(B("Infos appareil", async () => await RefreshDevice()));
+        appRow.Controls.Add(B("Gestion TiviMate", OpenTiviMateManager));
         installation.Controls.Add(appRow);
         outer.Controls.Add(installation, 0, 2);
 
