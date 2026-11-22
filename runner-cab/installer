@@ -27,14 +27,17 @@
 # inventée ou une empreinte recopiée de mémoire vaut moins qu'une question.
 #
 # Usage (root, sur le cab, depuis une copie du dépôt) :
-#   runner-cab/installer --version 2.xxx.y --sha256 <64 hexa> --jeton <jeton>
+#   runner-cab/installer --version 2.xxx.y --sha256 <64 hexa> --jeton <jeton> [--nom yanncab]
 #   runner-cab/installer --mettre-a-jour-l-outil   reposer poser-le-mj et le périmètre seulement
 set -euo pipefail
 
 ICI=$(cd "$(dirname "$(readlink -f "$0")")" && pwd)
 DEPOT_GITHUB="https://github.com/PinCabOs/PinCabOsV2"   # la casse exacte du dépôt, celle que GitHub donne au jeton
+# PINCABOS_LES_DEUX_CABS_SUIVENT_LE_MEME_COMMIT_V1 — 22/11/2026 : une partie Hot Seat se joue à
+# deux cabs ; si un seul suivait main à chaud, l'écart de code entre eux casserait la partie
+# avant le code lui-même. Yann a accepté le même runner sur son cab : un nom par cab, et ce nom
+# est aussi l'étiquette que le workflow vise (sa matrice).
 NOM="karotspincab"
-ETIQUETTES="karotspincab,multijoueur"
 COMPTE="runner-mj"
 MAISON="/data/runner-mj"
 DEV="/data/mj-dev"
@@ -47,6 +50,7 @@ while [ $# -gt 0 ]; do
     --version) VERSION=${2:-}; shift 2 ;;
     --sha256) SHA256=${2:-}; shift 2 ;;
     --jeton) JETON=${2:-}; shift 2 ;;
+    --nom) NOM=${2:-}; shift 2 ;;
     --mettre-a-jour-l-outil) OUTIL_SEUL=1; shift ;;
     -h|--help) sed -n '2,/^set -euo/p' "$0" | sed '$d; s/^# \{0,1\}//'; exit 0 ;;
     *) echouer "argument inconnu : $1 (voir --help)" ;;
@@ -54,6 +58,11 @@ while [ $# -gt 0 ]; do
 done
 
 [ "$(id -u)" -eq 0 ] || echouer "root seulement"
+case "$NOM" in
+  karotspincab|yanncab) ;;
+  *) echouer "--nom : karotspincab ou yanncab (les cabs que vise .github/workflows/multijoueur-cab.yml)" ;;
+esac
+ETIQUETTES="$NOM,multijoueur"
 for f in poser-le-mj perimetre-multijoueur.liste pincabos-runner-mj.service pincabos-mj-dev.service; do
   [ -f "$ICI/$f" ] || echouer "$ICI/$f absent : lancer depuis une copie complète du dépôt"
 done
