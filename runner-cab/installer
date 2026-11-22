@@ -92,6 +92,9 @@ fi
 # ── 3. Le compte ─────────────────────────────────────────────────────────────────────────────
 # Déclaré par sysusers comme les comptes de l'image (§4, catégorie 3 : réconciliée par AJOUT) :
 # le fragment vit dans DATA/etc, une mise à jour A/B ne le retire pas.
+# Mesuré sur karotspincab le 22/11/2026 : /etc/sysusers.d n'existe pas sur l'image (ses fragments
+# sont sous /usr/lib/sysusers.d) — le créer, sinon l'écriture échoue.
+install -d -o root -g root -m 0755 /etc/sysusers.d
 cat > /etc/sysusers.d/pincabos-runner-mj.conf <<EOF
 # PINCABOS_LE_RUNNER_DU_CAB_V1 — compte du runner GitHub du cab de développement.
 u $COMPTE - "Runner GitHub du multijoueur" $MAISON /usr/sbin/nologin
