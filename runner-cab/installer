@@ -1,0 +1,146 @@
+#!/usr/bin/env bash
+# Installe, sur LE cab de développement, le runner GitHub qui pose le multijoueur à chaud.
+#
+# PINCABOS_LE_RUNNER_DU_CAB_V1 — Karots, 22/11/2026 : « aide-moi à faire un runner pour
+# pincabosv2 directement sur mon cab ; on laisse le runner actuel à Yann, et pour le multiplayer
+# on bouge sur mon cab direct ». Le runner de pcos-build (étiquette pcos-build) garde le banc,
+# l'intégration, la construction et la publication ; celui-ci ne porte QUE l'étiquette
+# « karotspincab » et ne joue que .github/workflows/multijoueur-cab.yml. Aucun job de Yann ne
+# peut tomber ici, aucun job du cab ne peut tomber chez Yann.
+#
+# CE QUI EST POSÉ, TOUT SUR DATA (rien dans l'image, qui reste en lecture seule) :
+#   /etc/sysusers.d/pincabos-runner-mj.conf   le compte « runner-mj » (pas root, pas uid 1000)
+#   /data/runner-mj/runner                    le runner de GitHub, à lui
+#   /data/mj-dev/bin/poser-le-mj              l'outil root qui pose la couche (root 0755)
+#   /data/mj-dev/perimetre.liste              ce que la couche a le droit de couvrir (root)
+#   /etc/sudoers.d/pincabos-runner-mj         runner-mj → CE fichier seulement, en root
+#   /etc/systemd/system/pincabos-runner-mj.service   le runner, lié à multi-user.target
+#   /etc/systemd/system/pincabos-mj-dev.service      remonte la couche au démarrage
+#
+# Le runner ne peut pas réécrire ce que root exécute : /data/mj-dev est à root. Changer
+# poser-le-mj ou le périmètre demande de REJOUER cet installateur (le workflow le signale
+# quand la copie de main diffère de celle posée).
+#
+# Ce qu'il faut avant (depuis GitHub, un compte admin du dépôt : Settings → Actions → Runners →
+# New self-hosted runner → Linux x64) : la VERSION du runner, le SHA-256 de son archive et le
+# JETON d'inscription (valable une heure). Rien de cela n'est prérempli ici : une version
+# inventée ou une empreinte recopiée de mémoire vaut moins qu'une question.
+#
+# Usage (root, sur le cab, depuis une copie du dépôt) :
+#   runner-cab/installer --version 2.xxx.y --sha256 <64 hexa> --jeton <jeton>
+#   runner-cab/installer --mettre-a-jour-l-outil   reposer poser-le-mj et le périmètre seulement
+set -euo pipefail
+
+ICI=$(cd "$(dirname "$(readlink -f "$0")")" && pwd)
+DEPOT_GITHUB="https://github.com/PinCabOs/PinCabOsV2"   # la casse exacte du dépôt, celle que GitHub donne au jeton
+NOM="karotspincab"
+ETIQUETTES="karotspincab,multijoueur"
+COMPTE="runner-mj"
+MAISON="/data/runner-mj"
+DEV="/data/mj-dev"
+
+echouer() { echo "installer : ÉCHEC — $*" >&2; exit 1; }
+
+VERSION="" SHA256="" JETON="" OUTIL_SEUL=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --version) VERSION=${2:-}; shift 2 ;;
+    --sha256) SHA256=${2:-}; shift 2 ;;
+    --jeton) JETON=${2:-}; shift 2 ;;
+    --mettre-a-jour-l-outil) OUTIL_SEUL=1; shift ;;
+    -h|--help) sed -n '2,/^set -euo/p' "$0" | sed '$d; s/^# \{0,1\}//'; exit 0 ;;
+    *) echouer "argument inconnu : $1 (voir --help)" ;;
+  esac
+done
+
+[ "$(id -u)" -eq 0 ] || echouer "root seulement"
+for f in poser-le-mj perimetre-multijoueur.liste pincabos-runner-mj.service pincabos-mj-dev.service; do
+  [ -f "$ICI/$f" ] || echouer "$ICI/$f absent : lancer depuis une copie complète du dépôt"
+done
+
+# ── 1. C'est bien un cab DEV ─────────────────────────────────────────────────────────────────
+IDENTITE=/usr/share/pincabos/identite
+[ -f "$IDENTITE" ] || echouer "$IDENTITE absent : ce n'est pas une image PinCabOS v2"
+CANAL=$(awk -F'\t' '$1=="image.canal"{print $2}' "$IDENTITE")
+[ "$CANAL" = DEV ] || echouer "canal de l'image : ${CANAL:-inconnu} — le runner du multijoueur ne va que sur un cab DEV"
+for outil in python3 sudo visudo systemd-sysusers systemctl curl tar sha256sum mount; do
+  command -v "$outil" >/dev/null || echouer "$outil introuvable sur ce cab"
+done
+modprobe overlay 2>/dev/null || true   # déjà chargé ou intégré : on juge sur /proc/filesystems
+grep -qw overlay /proc/filesystems || echouer "le noyau ne connaît pas overlayfs"
+
+# ── 2. L'outil root et le périmètre ──────────────────────────────────────────────────────────
+install -d -o root -g root -m 0755 "$DEV" "$DEV/bin" "$DEV/couches"
+install -o root -g root -m 0755 "$ICI/poser-le-mj" "$DEV/bin/poser-le-mj"
+install -o root -g root -m 0644 "$ICI/perimetre-multijoueur.liste" "$DEV/perimetre.liste"
+"$DEV/bin/poser-le-mj" --help >/dev/null || echouer "poser-le-mj ne répond pas à --help"
+echo "    outil : $DEV/bin/poser-le-mj ($(sha256sum "$DEV/bin/poser-le-mj" | cut -c1-12))"
+echo "    périmètre : $(grep -cv '^\s*\(#\|$\)' "$DEV/perimetre.liste") motif(s)"
+install -o root -g root -m 0644 "$ICI/pincabos-mj-dev.service" /etc/systemd/system/pincabos-mj-dev.service
+systemctl daemon-reload
+systemctl enable pincabos-mj-dev.service >/dev/null
+[ "$(systemctl is-enabled pincabos-mj-dev.service)" = enabled ] || echouer "pincabos-mj-dev.service n'est pas lié"
+if [ -n "$OUTIL_SEUL" ]; then
+  echo "installer : outil et périmètre reposés ; le runner n'est pas touché."
+  exit 0
+fi
+
+[[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || echouer "--version manquante ou invalide (ex. celle de la page New self-hosted runner)"
+[[ "$SHA256" =~ ^[0-9a-f]{64}$ ]] || echouer "--sha256 manquant ou invalide (64 hexa minuscules)"
+[ -n "$JETON" ] || echouer "--jeton manquant (Settings → Actions → Runners → New self-hosted runner)"
+
+# ── 3. Le compte ─────────────────────────────────────────────────────────────────────────────
+# Déclaré par sysusers comme les comptes de l'image (§4, catégorie 3 : réconciliée par AJOUT) :
+# le fragment vit dans DATA/etc, une mise à jour A/B ne le retire pas.
+cat > /etc/sysusers.d/pincabos-runner-mj.conf <<EOF
+# PINCABOS_LE_RUNNER_DU_CAB_V1 — compte du runner GitHub du cab de développement.
+u $COMPTE - "Runner GitHub du multijoueur" $MAISON /usr/sbin/nologin
+EOF
+systemd-sysusers /etc/sysusers.d/pincabos-runner-mj.conf
+getent passwd "$COMPTE" >/dev/null || echouer "le compte $COMPTE n'a pas été créé"
+[ "$(id -u "$COMPTE")" -ne 1000 ] || echouer "$COMPTE a reçu l'uid du joueur"
+install -d -o "$COMPTE" -g "$COMPTE" -m 0750 "$MAISON"
+
+# ── 4. Le droit, et lui seul ─────────────────────────────────────────────────────────────────
+SUDOERS_TMP=$(mktemp)
+cat > "$SUDOERS_TMP" <<EOF
+# PINCABOS_LE_RUNNER_DU_CAB_V1 — le runner ne peut lancer en root QUE l'outil posé par root.
+$COMPTE ALL=(root) NOPASSWD: $DEV/bin/poser-le-mj
+EOF
+visudo -cf "$SUDOERS_TMP" >/dev/null || { rm -f "$SUDOERS_TMP"; echouer "règle sudoers refusée par visudo"; }
+install -o root -g root -m 0440 "$SUDOERS_TMP" /etc/sudoers.d/pincabos-runner-mj
+rm -f "$SUDOERS_TMP"
+sudo -l -U "$COMPTE" | grep -q "$DEV/bin/poser-le-mj" || echouer "sudo ne voit pas la règle de $COMPTE"
+
+# ── 5. Le runner de GitHub ───────────────────────────────────────────────────────────────────
+ARCHIVE="actions-runner-linux-x64-$VERSION.tar.gz"
+TMP=$(mktemp -d)
+trap 'rm -rf "$TMP"' EXIT
+curl -fL --retry 3 -o "$TMP/$ARCHIVE" "https://github.com/actions/runner/releases/download/v$VERSION/$ARCHIVE"
+echo "$SHA256  $TMP/$ARCHIVE" | sha256sum -c --quiet - || echouer "empreinte de $ARCHIVE différente de --sha256 : rien n'est installé"
+if [ -d "$MAISON/runner" ]; then
+  echo "    $MAISON/runner existe déjà : on se réinscrit par-dessus (--replace)"
+fi
+install -d -o "$COMPTE" -g "$COMPTE" -m 0750 "$MAISON/runner"
+tar -xzf "$TMP/$ARCHIVE" -C "$MAISON/runner"
+chown -R "$COMPTE:$COMPTE" "$MAISON/runner"
+( cd "$MAISON/runner" && sudo -u "$COMPTE" ./config.sh --unattended --replace \
+    --url "$DEPOT_GITHUB" --token "$JETON" --name "$NOM" --labels "$ETIQUETTES" --work _work ) \
+  || echouer "l'inscription auprès de GitHub a échoué (jeton expiré ? une heure de validité)"
+
+# ── 6. Le service, LIÉ (une unité démarre parce qu'elle est liée) ────────────────────────────
+install -o root -g root -m 0644 "$ICI/pincabos-runner-mj.service" /etc/systemd/system/pincabos-runner-mj.service
+systemctl daemon-reload
+systemd-analyze verify /etc/systemd/system/pincabos-runner-mj.service /etc/systemd/system/pincabos-mj-dev.service \
+  || echouer "systemd-analyze refuse une des deux unités"
+systemctl enable --now pincabos-runner-mj.service >/dev/null
+[ "$(systemctl is-enabled pincabos-runner-mj.service)" = enabled ] || echouer "pincabos-runner-mj.service n'est pas lié"
+systemctl list-dependencies multi-user.target --plain | grep -q pincabos-runner-mj.service \
+  || echouer "multi-user.target ne tire pas pincabos-runner-mj.service"
+sleep 5
+systemctl is-active --quiet pincabos-runner-mj.service \
+  || { journalctl -u pincabos-runner-mj.service -n 30 --no-pager >&2; echouer "le runner ne tourne pas (journal ci-dessus)"; }
+
+echo "installer : runner « $NOM » inscrit sur $DEPOT_GITHUB, étiquettes self-hosted,Linux,X64,$ETIQUETTES."
+echo "  Vérifier qu'il est « Idle » : $DEPOT_GITHUB/settings/actions/runners"
+echo "  Premier essai : Actions → « Multijoueur sur le cab de Karots » → Run workflow (action : etat)."

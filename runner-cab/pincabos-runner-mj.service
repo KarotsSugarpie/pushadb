@@ -1,0 +1,29 @@
+# Le runner GitHub du cab de développement (dépôt pincabos/pincabosv2), étiquette « karotspincab ».
+#
+# Voir PINCABOS_LE_RUNNER_DU_CAB_V1 dans runner-cab/installer. Posée par l'installateur dans
+# /etc/systemd/system (DATA/etc : un ajout local, que la fusion de /etc garde) ; elle ne voyage
+# PAS dans l'image : un cab de joueur n'a pas de runner.
+[Unit]
+Description=Runner GitHub du multijoueur (cab de développement)
+Wants=network-online.target
+After=network-online.target pincabos-mj-dev.service
+
+[Service]
+Type=simple
+User=runner-mj
+Group=runner-mj
+WorkingDirectory=/data/runner-mj/runner
+ExecStart=/data/runner-mj/runner/run.sh
+Restart=always
+RestartSec=30
+# Le runner relaie l'arrêt à son travailleur : il faut lui laisser le temps de rendre le job.
+KillMode=process
+KillSignal=SIGTERM
+TimeoutStopSec=5min
+# Un job ne dispute pas le processeur ni le disque à une partie.
+Nice=10
+CPUWeight=20
+IOWeight=20
+
+[Install]
+WantedBy=multi-user.target

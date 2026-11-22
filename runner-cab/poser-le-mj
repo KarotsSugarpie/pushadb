@@ -1,0 +1,463 @@
+#!/usr/bin/python3 -I
+"""Pose À CHAUD le code multijoueur de main sur le cab de Karots, par-dessus l'image, et l'en retire.
+
+PINCABOS_LE_MJ_SE_POSE_A_CHAUD_SUR_LE_CAB_V1 — Karots, 22/11/2026 : « aide-moi à faire un runner
+pour pincabosv2 directement sur mon cab ; on laisse le runner actuel à Yann, et pour le
+multiplayer on bouge sur mon cab direct ». Choix du même jour : le runner du cab DÉPLOIE À CHAUD
+puis teste, déclenché par main (après le banc de pcos-build) et à la main.
+
+Symptôme que ça règle : chaque essai du multijoueur sur un vrai cabinet faisait le tour complet
+banc → main → demande de construction → image DEV signée → mise à jour → redémarrage, environ
+une heure, pour changer trois lignes d'une page. Le multijoueur se mesure à deux cabs réels ;
+c'est le code qui bouge le plus, et le seul qu'on ne peut juger qu'en MATÉRIEL.
+
+Pourquoi une COUCHE (overlayfs) et pas une copie : /usr est en lecture seule (décision 2, image
+A/B), et c'est voulu. La couche se monte PAR-DESSUS le paquet de l'image
+(/usr/lib/python3/dist-packages/pincabos) avec son dessus sur DATA ; l'image n'est pas modifiée
+d'un octet. Retirer la couche, c'est revenir exactement à l'image. Seuls les fichiers du
+périmètre (/data/mj-dev/perimetre.liste) passent : le reste du paquet reste celui de l'image.
+
+Ce qui protège le cab :
+  · canal DEV seulement : une image CANARY ou PRODUCTION refuse la couche ;
+  · jamais pendant une partie (un processus VPinballX* vivant) : on attend, on ne tue rien ;
+  · la couche nomme le commit de l'IMAGE sur laquelle elle a été posée. Après une mise à jour
+    A/B, l'image a changé : au démarrage, `remonter` REFUSE de la remettre (elle masquerait les
+    fichiers plus récents de la nouvelle image avec ceux d'hier) et le dit dans l'état ;
+  · le VPX et le VPinFE de production ne sont pas touchés (zone protégée) : la couche ne couvre
+    que le paquet Python et la traduction ;
+  · la session (pincabos-session) n'est JAMAIS redémarrée ici : l'arrêter tue pipewire et la
+    partie en cours (CLAUDE.md). Le multiBG, ouvert par la session, prend donc le code au
+    prochain démarrage du cab — la couche, elle, est remontée au démarrage.
+
+Ce que ça NE couvre pas : le greffon C++ PincabosMJ (build/greffons), les outils de /usr/bin et
+les unités systemd. Ceux-là voyagent avec l'image DEV, comme avant.
+
+Confiance : la couche exécute le code de main, en root pour ce que root importe
+(appliquer-les-demandes), sans la signature de l'image. C'est le prix du « à chaud », assumé
+pour UN cab de développement, celui de Karots. Le runner, lui, n'est pas root : il n'a le
+droit (sudoers) que de lancer CE fichier, posé par root dans /data/mj-dev/bin, qu'il ne peut
+pas réécrire.
+
+Usage (root) :
+  poser-le-mj deployer <dossier du checkout> <sha de 40 hexa>
+  poser-le-mj retirer
+  poser-le-mj remonter          au démarrage (pincabos-mj-dev.service)
+  poser-le-mj etat [--verifier] --verifier rend 1 si ce que sert le paquet n'est pas la couche
+"""
+from __future__ import annotations
+
+import argparse
+import datetime
+import fcntl
+import fnmatch
+import hashlib
+import json
+import os
+import re
+import shutil
+import stat
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+PAQUET = "usr/lib/python3/dist-packages/pincabos"
+I18N = "usr/share/pincabos/i18n.json"
+IDENTITE = "usr/share/pincabos/identite"
+DEV = "data/mj-dev"
+SOURCE_DU_MONTAGE = "pincabos-mj-dev"
+VERROU = "/run/pincabos-mj-dev.verrou"
+
+# Les mêmes extensions que l'étape 04 (build/etapes/04-pincabos.sh) : ce qui n'irait pas dans
+# l'image n'entre pas non plus dans la couche.
+EXTENSIONS = (".py", ".css", ".js", ".html", ".glb")
+
+# Les services qui importent le code du multijoueur et qu'on peut relancer sans toucher à une
+# partie. Seulement ceux qui tournent : un service arrêté le reste.
+SERVICES = ("pincabos-webremote.service", "pincabos-chat-av.service", "pincabos-victoire.service")
+
+# Une partie est en cours tant qu'un VPX vit (WM_CLASS et nom « VPinballX_BGFX », garder-le-focus).
+PREFIXE_VPX = "VPinballX"
+ATTENTE_PARTIE = 15 * 60
+PAS_ATTENTE = 20
+
+SHA = re.compile(r"^[0-9a-f]{40}$")
+
+
+class Refus(Exception):
+    """Une condition qui interdit de poser la couche. Le message dit laquelle et quoi faire."""
+
+
+# ── lectures ─────────────────────────────────────────────────────────────────────────────────
+
+def motifs(texte: str) -> tuple[str, ...]:
+    """Les motifs du périmètre, sans commentaires ni lignes vides. Vide = refus : une couche
+    sans périmètre ne poserait rien et ferait croire qu'elle a posé."""
+    m = tuple(l.strip() for l in texte.splitlines() if l.strip() and not l.lstrip().startswith("#"))
+    if not m:
+        raise Refus("le périmètre est vide : rien ne serait posé (rejouer l'installateur)")
+    for motif in m:
+        if motif.startswith("/") or ".." in motif.split("/"):
+            raise Refus(f"motif hors du paquet dans le périmètre : {motif!r}")
+    return m
+
+
+def dans_le_perimetre(rel: str, m) -> bool:
+    return any(fnmatch.fnmatchcase(rel, motif) for motif in m)
+
+
+def valeurs_d_identite(texte: str) -> dict:
+    """Le format de /usr/share/pincabos/identite (« clé<TAB>valeur ») — le même que
+    webremote/mises_a_jour.valeurs_d_identite, relu ici pour ne rien importer de la couche."""
+    valeurs = {}
+    for ligne in (texte or "").splitlines():
+        if ligne.startswith("#") or "\t" not in ligne:
+            continue
+        cle, _, valeur = ligne.partition("\t")
+        valeurs[cle.strip()] = valeur.strip()
+    return valeurs
+
+
+def identite(racine: Path) -> dict:
+    try:
+        return valeurs_d_identite((racine / IDENTITE).read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        raise Refus(f"{'/' + IDENTITE} absent : ce n'est pas une image PinCabOS v2") from None
+
+
+def exiger_le_canal_dev(ident: dict) -> str:
+    canal = ident.get("image.canal")
+    if canal != "DEV":
+        raise Refus(f"canal de l'image : {canal or 'inconnu'} — la couche ne se pose que sur une image DEV")
+    base = ident.get("depot.commit", "")
+    if not SHA.match(base):
+        raise Refus(f"l'image ne nomme pas son commit (depot.commit = {base or 'absent'!r})")
+    return base
+
+
+def parties_en_cours(proc: Path = Path("/proc")) -> list[int]:
+    pids = []
+    for d in proc.iterdir():
+        if not d.name.isdigit():
+            continue
+        try:
+            nom = (d / "comm").read_text(encoding="utf-8", errors="replace").strip()
+        except (FileNotFoundError, ProcessLookupError, PermissionError):
+            # Le processus est mort entre la liste et la lecture : il ne joue plus.
+            continue
+        if nom.startswith(PREFIXE_VPX):
+            pids.append(int(d.name))
+    return pids
+
+
+def sha256(chemin: Path) -> str:
+    h = hashlib.sha256()
+    fd = os.open(chemin, os.O_RDONLY | os.O_NOFOLLOW)
+    with os.fdopen(fd, "rb") as f:
+        for bloc in iter(lambda: f.read(1 << 20), b""):
+            h.update(bloc)
+    return h.hexdigest()
+
+
+def fichiers_a_poser(checkout: Path, m) -> dict[str, Path]:
+    """rel → fichier du checkout, pour chaque fichier ordinaire du périmètre. Un lien
+    symbolique est REFUSÉ, pas suivi : root le lirait, et le runner choisit sa cible."""
+    src = checkout / "src" / "pincabos"
+    if src.is_symlink() or not src.is_dir():
+        raise Refus(f"{src} n'est pas un dossier du checkout")
+    trouves = {}
+    for dossier, sous, noms in os.walk(src, followlinks=False):
+        sous[:] = sorted(s for s in sous if s != "__pycache__")
+        for nom in sorted(noms):
+            chemin = Path(dossier) / nom
+            rel = chemin.relative_to(src).as_posix()
+            if not nom.endswith(EXTENSIONS) or not dans_le_perimetre(rel, m):
+                continue
+            mode = os.lstat(chemin).st_mode
+            if not stat.S_ISREG(mode):
+                raise Refus(f"{rel} n'est pas un fichier ordinaire (lien ou spécial) : refusé")
+            trouves[rel] = chemin
+    if not trouves:
+        raise Refus("aucun fichier du périmètre dans le checkout : rien à poser")
+    return trouves
+
+
+# ── montages ─────────────────────────────────────────────────────────────────────────────────
+
+def _decoder(champ: str) -> str:
+    return re.sub(r"\\([0-7]{3})", lambda x: chr(int(x.group(1), 8)), champ)
+
+
+def montages(mountinfo: str) -> list[tuple[str, str, str]]:
+    """(point de montage, type, source) de /proc/self/mountinfo."""
+    sortie = []
+    for ligne in mountinfo.splitlines():
+        avant, _, apres = ligne.partition(" - ")
+        champs, fin = avant.split(), apres.split()
+        if len(champs) >= 5 and len(fin) >= 2:
+            sortie.append((_decoder(champs[4]), fin[0], fin[1]))
+    return sortie
+
+
+def monte(point: str) -> bool:
+    with open("/proc/self/mountinfo", encoding="utf-8") as f:
+        return any(p == point for p, _, _ in montages(f.read()))
+
+
+def commande(args: list[str]) -> None:
+    r = subprocess.run(args, capture_output=True, text=True)
+    if r.returncode != 0:
+        raise Refus(f"« {' '.join(args)} » a échoué ({r.returncode}) : {(r.stderr or r.stdout).strip()}")
+
+
+def demonter(racine: Path) -> list[str]:
+    """Démonte la traduction puis la couche, jusqu'à retrouver l'image. Rend ce qui a été
+    démonté : « rien » est une réponse, pas un silence."""
+    faits = []
+    for point in (str(racine / I18N), str(racine / PAQUET)):
+        for _ in range(3):           # une couche montée deux fois (incident) se démonte deux fois
+            if not monte(point):
+                break
+            commande(["umount", point])
+            faits.append(point)
+        if monte(point):
+            raise Refus(f"{point} reste monté après trois démontages")
+    return faits
+
+
+def monter(racine: Path, couche: Path) -> None:
+    paquet = str(racine / PAQUET)
+    commande(["mount", "-t", "overlay", SOURCE_DU_MONTAGE, "-o",
+              f"lowerdir={paquet},upperdir={couche / 'haut'},workdir={couche / 'travail'}", paquet])
+    if (couche / "i18n.json").is_file():
+        cible = str(racine / I18N)
+        commande(["mount", "--bind", str(couche / "i18n.json"), cible])
+        commande(["mount", "-o", "remount,bind,ro", cible])
+
+
+# ── état ─────────────────────────────────────────────────────────────────────────────────────
+
+def lire_etat(dev: Path) -> dict:
+    try:
+        return json.loads((dev / "etat.json").read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return {}
+
+
+def ecrire_etat(dev: Path, etat: dict) -> None:
+    tmp = dev / ".etat.json.tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(etat, f, ensure_ascii=False, indent=2, sort_keys=True)
+        f.write("\n")
+        f.flush()
+        os.fsync(f.fileno())
+    os.chmod(tmp, 0o644)
+    os.replace(tmp, dev / "etat.json")
+
+
+def ecarts(racine: Path, attendus: dict) -> list[str]:
+    """Les fichiers que le paquet NE sert PAS comme la couche les a posés."""
+    paquet = racine / PAQUET
+    faux = []
+    for rel, empreinte in sorted(attendus.items()):
+        try:
+            if sha256(paquet / rel) != empreinte:
+                faux.append(rel)
+        except FileNotFoundError:
+            faux.append(rel)
+    return faux
+
+
+def supprimer_couche(dev: Path, couche: Path) -> None:
+    """Suppression récursive (CLAUDE.md) : realpath, préfixe explicite, jamais le préfixe lui-même."""
+    prefixe = os.path.realpath(dev / "couches")
+    reel = os.path.realpath(couche)
+    if not reel.startswith(prefixe + os.sep) or reel == prefixe:
+        raise Refus(f"refus de supprimer {reel} : hors de {prefixe}")
+    shutil.rmtree(reel)
+
+
+# ── actions ──────────────────────────────────────────────────────────────────────────────────
+
+def relancer_les_services(dire) -> list[str]:
+    relances = []
+    for service in SERVICES:
+        actif = subprocess.run(["systemctl", "is-active", "--quiet", service]).returncode == 0
+        if not actif:
+            dire(f"  {service} : arrêté, laissé arrêté")
+            continue
+        commande(["systemctl", "restart", service])
+        relances.append(service)
+        dire(f"  {service} : relancé")
+    return relances
+
+
+def attendre_la_fin_de_partie(dire, proc=Path("/proc"), dormir=time.sleep, plafond=ATTENTE_PARTIE):
+    attendu = 0
+    while True:
+        pids = parties_en_cours(proc)
+        if not pids:
+            return
+        if attendu >= plafond:
+            raise Refus(f"une partie tourne depuis plus de {plafond // 60} min (VPX pid {pids}) : "
+                        "rien n'est posé, la partie n'est pas interrompue")
+        if attendu == 0:
+            dire(f"une partie est en cours (VPX pid {pids}) : on attend qu'elle finisse")
+        dormir(PAS_ATTENTE)
+        attendu += PAS_ATTENTE
+
+
+def deployer(checkout: Path, sha: str, racine: Path = Path("/"), dire=print,
+             relancer=relancer_les_services, attendre=attendre_la_fin_de_partie) -> dict:
+    if not SHA.match(sha):
+        raise Refus(f"sha invalide : {sha!r} (40 hexa minuscules attendus)")
+    base = exiger_le_canal_dev(identite(racine))
+    dev = racine / DEV
+    m = motifs((dev / "perimetre.liste").read_text(encoding="utf-8"))
+    fichiers = fichiers_a_poser(Path(os.path.realpath(checkout)), m)
+
+    i18n = Path(os.path.realpath(checkout)) / "i18n" / "i18n.json"
+    i18n_texte = None
+    if i18n.is_file() and not i18n.is_symlink():
+        i18n_texte = i18n.read_bytes()
+        json.loads(i18n_texte)        # illisible = refus, avant de toucher à quoi que ce soit
+
+    horodatage = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    couche = dev / "couches" / f"{sha[:12]}-{horodatage}"
+    (couche / "travail").mkdir(parents=True, mode=0o755)
+    haut = couche / "haut"
+    empreintes = {}
+    for rel, source in fichiers.items():
+        cible = haut / rel
+        cible.parent.mkdir(parents=True, exist_ok=True, mode=0o755)
+        fd = os.open(source, os.O_RDONLY | os.O_NOFOLLOW)
+        with os.fdopen(fd, "rb") as entree, open(cible, "wb") as sortie:
+            shutil.copyfileobj(entree, sortie)
+        os.chmod(cible, 0o644)
+        empreintes[rel] = sha256(cible)
+    if i18n_texte is not None:
+        (couche / "i18n.json").write_bytes(i18n_texte)
+        os.chmod(couche / "i18n.json", 0o644)
+
+    attendre(dire)
+    ancien = lire_etat(dev)
+    demontes = demonter(racine)
+    # Entre le démontage et la vérification, l'état dit « pas de couche » : si le montage échoue,
+    # le cab sert l'image et l'état ne prétend pas le contraire.
+    ecrire_etat(dev, ancien | {"actif": False})
+    monter(racine, couche)
+    faux = ecarts(racine, empreintes)
+    if faux:
+        demonter(racine)
+        raise Refus(f"la couche est montée mais le paquet ne la sert pas pour {len(faux)} fichier(s) : "
+                    f"{faux[:5]} — couche retirée, le cab est revenu à l'image")
+    etat = {"actif": True, "perimee": False, "sha": sha, "base": base, "couche": couche.name,
+            "pose_le": horodatage, "fichiers": empreintes, "i18n": i18n_texte is not None}
+    ecrire_etat(dev, etat)
+    dire(f"couche {sha[:12]} posée sur l'image {base[:12]} : {len(empreintes)} fichier(s)"
+         + (", traduction comprise" if i18n_texte is not None else "")
+         + (f" (ancienne couche {ancien.get('sha', '?')[:12]} démontée)" if demontes else ""))
+    etat["relances"] = relancer(dire)
+    for vieille in sorted((dev / "couches").iterdir()):
+        if vieille.name != couche.name:
+            supprimer_couche(dev, vieille)
+    return etat
+
+
+def retirer(racine: Path = Path("/"), dire=print, relancer=relancer_les_services) -> None:
+    dev = racine / DEV
+    demontes = demonter(racine)
+    etat = lire_etat(dev)
+    etat.update({"actif": False})
+    ecrire_etat(dev, etat)
+    if (dev / "couches").is_dir():
+        for couche in sorted((dev / "couches").iterdir()):
+            supprimer_couche(dev, couche)
+    dire("couche retirée : le cab sert l'image" if demontes else "aucune couche montée : le cab servait déjà l'image")
+    if demontes:
+        relancer(dire)
+
+
+def remonter(racine: Path = Path("/"), dire=print) -> int:
+    """Au démarrage. Rend 0 dans tous les cas où le cab démarre sur un état CONNU (couche
+    remontée, ou refusée et notée) : un refus de la couche ne doit pas empêcher le cab de
+    démarrer. Rend 1 seulement si on n'a pas pu savoir."""
+    dev = racine / DEV
+    etat = lire_etat(dev)
+    if not etat.get("actif"):
+        dire("pas de couche multijoueur active : le cab sert l'image")
+        return 0
+    base = identite(racine).get("depot.commit", "")
+    if base != etat.get("base"):
+        etat["perimee"] = True
+        etat["actif"] = False
+        ecrire_etat(dev, etat)
+        dire(f"COUCHE PÉRIMÉE, NON REMONTÉE — posée sur l'image {etat.get('base', '?')[:12]}, "
+             f"le cab démarre l'image {base[:12]} (mise à jour A/B). Le prochain déploiement la refera.")
+        return 0
+    couche = dev / "couches" / etat.get("couche", "")
+    if not (couche / "haut").is_dir():
+        etat["actif"] = False
+        ecrire_etat(dev, etat)
+        dire(f"couche {etat.get('couche')} introuvable sur DATA : non remontée, le cab sert l'image")
+        return 0
+    if monte(str(racine / PAQUET)):
+        dire("une couche est déjà montée : rien à remonter")
+        return 0
+    monter(racine, couche)
+    faux = ecarts(racine, etat.get("fichiers", {}))
+    if faux:
+        demonter(racine)
+        etat["actif"] = False
+        ecrire_etat(dev, etat)
+        dire(f"couche remontée mais fausse pour {faux[:5]} : retirée, le cab sert l'image")
+        return 0
+    dire(f"couche multijoueur {etat['sha'][:12]} remontée ({len(etat.get('fichiers', {}))} fichiers)")
+    return 0
+
+
+def principal(argv=None) -> int:
+    a = argparse.ArgumentParser(prog="poser-le-mj", description=__doc__,
+                                formatter_class=argparse.RawDescriptionHelpFormatter)
+    sous = a.add_subparsers(dest="action", required=True)
+    d = sous.add_parser("deployer", help="poser la couche du checkout donné")
+    d.add_argument("checkout")
+    d.add_argument("sha")
+    sous.add_parser("retirer", help="démonter la couche : le cab revient à l'image")
+    sous.add_parser("remonter", help="au démarrage : remettre la couche si l'image n'a pas changé")
+    e = sous.add_parser("etat", help="dire ce qui est posé")
+    e.add_argument("--verifier", action="store_true", help="rendre 1 si le paquet ne sert pas la couche")
+    args = a.parse_args(argv)
+
+    if os.geteuid() != 0:
+        print("poser-le-mj : REFUS — root seulement (sudo depuis le runner)", file=sys.stderr)
+        return 2
+    try:
+        if args.action == "etat":
+            etat = lire_etat(Path("/") / DEV)
+            etat_monte = monte("/" + PAQUET)
+            print(json.dumps({k: v for k, v in etat.items() if k != "fichiers"} | {
+                "montee": etat_monte, "nombre_de_fichiers": len(etat.get("fichiers", {}))},
+                ensure_ascii=False, indent=2, sort_keys=True))
+            if args.verifier and etat.get("actif"):
+                faux = ecarts(Path("/"), etat.get("fichiers", {})) if etat_monte else ["(couche non montée)"]
+                if faux:
+                    print(f"poser-le-mj : ÉCART — le paquet ne sert pas la couche pour {faux[:10]}", file=sys.stderr)
+                    return 1
+            return 0
+        with open(VERROU, "w") as verrou:
+            fcntl.flock(verrou, fcntl.LOCK_EX)
+            if args.action == "deployer":
+                deployer(Path(args.checkout), args.sha)
+                return 0
+            if args.action == "retirer":
+                retirer()
+                return 0
+            return remonter()
+    except Refus as r:
+        print(f"poser-le-mj : REFUS — {r}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(principal())

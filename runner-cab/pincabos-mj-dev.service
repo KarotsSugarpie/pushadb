@@ -1,0 +1,19 @@
+# Remonte au démarrage la couche multijoueur posée à chaud, si l'image n'a pas changé.
+#
+# Voir PINCABOS_LE_MJ_SE_POSE_A_CHAUD_SUR_LE_CAB_V1 dans runner-cab/poser-le-mj. AVANT les
+# services qui importent le paquet : ils démarrent sur la couche, ou sur l'image, jamais sur un
+# mélange. Un refus (image changée, couche introuvable) ne bloque pas le démarrage : il est
+# noté dans /data/mj-dev/etat.json et le cab sert l'image.
+[Unit]
+Description=Couche multijoueur du cab de développement (remontée au démarrage)
+RequiresMountsFor=/data /usr/lib/python3/dist-packages /usr/share/pincabos
+Before=pincabos-webremote.service pincabos-chat-av.service pincabos-victoire.service pincabos-demandes.service pincabos-session.service
+ConditionPathExists=/data/mj-dev/etat.json
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/data/mj-dev/bin/poser-le-mj remonter
+
+[Install]
+WantedBy=multi-user.target

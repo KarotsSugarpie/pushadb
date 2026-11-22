@@ -1,0 +1,20 @@
+# Le périmètre du multijoueur posé À CHAUD sur le cab de Karots par le runner du cab.
+#
+# Voir PINCABOS_LE_MJ_SE_POSE_A_CHAUD_SUR_LE_CAB_V1 dans runner-cab/poser-le-mj.
+#
+# Une ligne = un motif glob relatif à src/pincabos (`*` traverse les « / », comme fnmatch).
+# Seuls ces fichiers passent dans la couche ; le reste du paquet reste celui de l'image.
+# Un fichier du dépôt qui change HORS de ce périmètre depuis le commit de l'image attend une
+# image DEV : le workflow le dit dans son résumé, il ne le pose pas.
+#
+# Ce fichier est COPIÉ par l'installateur dans /data/mj-dev (root) : changer le périmètre
+# demande de rejouer l'installateur, pas seulement de pousser sur main. Le runner n'écrit
+# pas ce que root lit.
+multijoueur/*
+multibg/*
+chat_av/*
+victoire/*
+webremote/page_multijoueur*.py
+webremote/page_chat_av.py
+webremote/statique/danse-choix.js
+webremote/statique/bluffs-xpressions.js
